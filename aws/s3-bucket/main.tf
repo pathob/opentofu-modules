@@ -10,7 +10,7 @@ resource "aws_iam_access_key" "iam_access_key" {
 
 resource "aws_s3_bucket" "s3_bucket" {
   bucket              = "${var.prefix}-${var.name}"
-  object_lock_enabled = true
+  object_lock_enabled = var.enable_object_lock
 }
 
 data "aws_iam_policy_document" "iam_policy_document_s3_dedicated_access" {
