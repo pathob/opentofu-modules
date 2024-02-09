@@ -13,6 +13,29 @@ resource "aws_s3_bucket" "s3_bucket" {
   object_lock_enabled = var.enable_object_lock
 }
 
+data "aws_iam_policy_document" "iam_policy_document_s3_list_bucket" {
+  version = "2012-10-17"
+  statement {
+    effect = "Allow"
+    principals {
+      type        = "AWS"
+      identifiers = ["${data.aws_canonical_user_id.current.id}"]
+    }
+    actions = [
+      "s3:ListBucket",
+    ]
+    resources = [
+      "${aws_s3_bucket.s3_bucket.arn}",
+      "${aws_s3_bucket.s3_bucket.arn}/*",
+    ]
+  }
+}
+
+resource "aws_s3_bucket_policy" "s3_bucket_policy_list_bucket" {
+  bucket = aws_s3_bucket.s3_bucket.id
+  policy = data.aws_iam_policy_document.iam_policy_document_s3_list_bucket.json
+}
+
 data "aws_iam_policy_document" "iam_policy_document_s3_dedicated_access" {
   version = "2012-10-17"
   statement {
