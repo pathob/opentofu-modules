@@ -28,3 +28,9 @@ variable "allowed_ips" {
   description = "List of allowed IPs"
   type        = list(string)
 }
+
+variable "enforce_storage_class" {
+  description = "Enforce the given storage class with a lifecycle configuration"
+  type        = string
+  default     = null
+}

@@ -73,3 +73,18 @@ resource "aws_s3_bucket_policy" "s3_bucket_policy_dedicated_access" {
   bucket = aws_s3_bucket.s3_bucket.id
   policy = data.aws_iam_policy_document.iam_policy_document_s3_dedicated_access.json
 }
+
+resource "aws_s3_bucket_lifecycle_configuration" "example_dev_lifecycle" {
+  count = var.enforce_storage_class != null ? 1 : 0
+
+  bucket = aws_s3_bucket.s3_bucket.id
+  rule {
+    id     = "EnforceStorageClass"
+    status = "Enabled"
+
+    transition {
+      days          = 0
+      storage_class = var.enforce_storage_class
+    }
+  }
+}
