@@ -34,3 +34,47 @@ variable "enforce_storage_class" {
   type        = string
   default     = null
 }
+
+variable "enable_backup" {
+  description = "Enable AWS Backup for the S3 bucket"
+  type        = bool
+  default     = false
+}
+
+variable "backup_vault_name" {
+  description = "Name of the existing backup vault to use (required if enable_backup is true)"
+  type        = string
+  default     = null
+  validation {
+    condition = var.enable_backup == false || (var.enable_backup == true && var.backup_vault_name != null)
+    error_message = "backup_vault_name must be provided when enable_backup is true."
+  }
+}
+
+variable "backup_schedule" {
+  description = "Cron expression for backup schedule (e.g., 'cron(0 2 * * ? *)')"
+  type        = string
+  default     = "cron(0 2 * * ? *)" # Daily at 2 AM
+}
+
+variable "backup_retention_days" {
+  description = "Number of days to retain backups"
+  type        = number
+  default     = 30
+}
+
+variable "enable_continuous_backup" {
+  description = "Enable continuous backup for point-in-time recovery (max 35 days)"
+  type        = bool
+  default     = false
+}
+
+variable "continuous_backup_retention_days" {
+  description = "Number of days to retain continuous backups (max 35)"
+  type        = number
+  default     = 7
+  validation {
+    condition     = var.continuous_backup_retention_days <= 35
+    error_message = "Continuous backup retention cannot exceed 35 days."
+  }
+}

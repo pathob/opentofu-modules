@@ -22,7 +22,7 @@ resource "aws_s3_bucket_public_access_block" "s3_bucket_public_access_block" {
 }
 
 resource "aws_s3_bucket_versioning" "s3_bucket_versioning" {
-  count = var.enable_versioning ? 1 : 0
+  count = var.enable_versioning || var.enable_backup ? 1 : 0
 
   bucket = aws_s3_bucket.s3_bucket.id
   versioning_configuration { status = "Enabled" }
@@ -47,7 +47,7 @@ data "aws_iam_policy_document" "iam_policy_document_s3_dedicated_access" {
         "s3:ListBucket",
         "s3:DeleteObject"
       ],
-      var.enable_object_lock || var.enable_versioning ? [
+      var.enable_object_lock || var.enable_versioning || var.enable_backup ? [
         "s3:GetBucketVersioning"
       ] : []
     )
@@ -86,5 +86,118 @@ resource "aws_s3_bucket_lifecycle_configuration" "s3_bucket_lifecycle_configurat
       days          = 0
       storage_class = var.enforce_storage_class
     }
+  }
+}
+
+# AWS Backup IAM Role
+resource "aws_iam_role" "backup_role" {
+  count = var.enable_backup ? 1 : 0
+
+  name = "${var.prefix}-${var.name}-backup-role"
+
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Action = "sts:AssumeRole"
+        Effect = "Allow"
+        Principal = {
+          Service = "backup.amazonaws.com"
+        }
+      }
+    ]
+  })
+}
+
+# Attach AWS managed policies for S3 backup and restore
+resource "aws_iam_role_policy_attachment" "backup_s3_policy" {
+  count = var.enable_backup ? 1 : 0
+
+  role       = aws_iam_role.backup_role[0].name
+  policy_arn = "arn:aws:iam::aws:policy/service-role/AWSBackupServiceRolePolicyForS3Backup"
+}
+
+resource "aws_iam_role_policy_attachment" "restore_s3_policy" {
+  count = var.enable_backup ? 1 : 0
+
+  role       = aws_iam_role.backup_role[0].name
+  policy_arn = "arn:aws:iam::aws:policy/service-role/AWSBackupServiceRolePolicyForS3Restore"
+}
+
+# AWS Backup Plan
+resource "aws_backup_plan" "s3_backup_plan" {
+  count = var.enable_backup ? 1 : 0
+
+  name = "${var.prefix}-${var.name}-backup-plan"
+
+  # Periodic backup rule
+  rule {
+    rule_name         = "s3_periodic_backup"
+    target_vault_name = var.backup_vault_name
+    schedule          = var.backup_schedule
+
+    lifecycle {
+      delete_after = var.backup_retention_days
+    }
+
+    recovery_point_tags = {
+      Name   = "${var.prefix}-${var.name}-backup"
+      Type   = "periodic"
+      Bucket = aws_s3_bucket.s3_bucket.id
+    }
+  }
+
+  # Continuous backup rule (if enabled)
+  dynamic "rule" {
+    for_each = var.enable_continuous_backup ? [1] : []
+
+    content {
+      rule_name         = "s3_continuous_backup"
+      target_vault_name = var.backup_vault_name
+
+      lifecycle {
+        delete_after = var.continuous_backup_retention_days
+      }
+
+      enable_continuous_backup = true
+
+      recovery_point_tags = {
+        Name   = "${var.prefix}-${var.name}-backup"
+        Type   = "continuous"
+        Bucket = aws_s3_bucket.s3_bucket.id
+      }
+    }
+  }
+}
+
+# AWS Backup Selection
+resource "aws_backup_selection" "s3_backup_selection" {
+  count = var.enable_backup ? 1 : 0
+
+  iam_role_arn = aws_iam_role.backup_role[0].arn
+  name         = "${var.prefix}-${var.name}-backup-selection"
+  plan_id      = aws_backup_plan.s3_backup_plan[0].id
+
+  resources = [
+    aws_s3_bucket.s3_bucket.arn
+  ]
+
+  selection_tag {
+    type  = "STRINGEQUALS"
+    key   = "BackupEnabled"
+    value = "true"
+  }
+}
+
+# Add backup tag to S3 bucket
+resource "aws_s3_bucket_tagging" "backup_tags" {
+  count = var.enable_backup ? 1 : 0
+
+  bucket = aws_s3_bucket.s3_bucket.id
+
+  tag_set = {
+    BackupEnabled = "true"
+    BackupPlan    = aws_backup_plan.s3_backup_plan[0].name
+    BackupVault   = var.backup_vault_name
   }
 }
